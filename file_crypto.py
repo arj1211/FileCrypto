@@ -1,9 +1,11 @@
 import base64
+import json
 import os
 import tempfile
-import zipfile
 from io import BytesIO
+from pathlib import Path
 
+import pyzipper
 from cryptography.fernet import Fernet
 
 
@@ -34,29 +36,38 @@ class FileCrypto:
         fernet = Fernet(key)
         return fernet.decrypt(encrypted_data)
 
-    def create_protected_zip(self, encrypted_data, key, password):
-        """Create password-protected zip with encrypted data and key"""
+    def create_protected_zip(self, encrypted_data, key, file_metadata, password):
+        """Create AES-encrypted zip with encrypted data, key, and metadata"""
         zip_buffer = BytesIO()
 
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        # Use AES-256 encrypted zip
+        with pyzipper.AESZipFile(
+            zip_buffer, "w", compression=pyzipper.ZIP_LZMA, encryption=pyzipper.WZ_AES
+        ) as zip_file:
+            # Set password
+            zip_file.pwd = password.encode()
+
             # Add encrypted data
             zip_file.writestr("encrypted_data.txt", encrypted_data)
 
-            # Add password-protected key file
-            with tempfile.NamedTemporaryFile(delete=False) as temp_key_file:
-                temp_key_file.write(key)
-                temp_key_file.flush()
+            # Add metadata
+            zip_file.writestr("metadata.json", json.dumps(file_metadata))
 
-                # Add key file with password protection
-                zip_file.write(temp_key_file.name, "key.txt", zipfile.ZIP_DEFLATED)
-                zip_file.setpassword(password.encode())
-
-            os.unlink(temp_key_file.name)
+            # Add key file
+            zip_file.writestr("key.txt", key)
 
         return zip_buffer.getvalue()
 
-    def encrypt_file(self, file_path, password):
+    def encrypt_file(self, file_path, password, output_file):
         """Encrypt file and create protected zip archive"""
+        # Get file metadata
+        path = Path(file_path)
+        file_metadata = {
+            "original_name": path.name,
+            "extension": path.suffix,
+            "stem": path.stem,
+        }
+
         # Encrypt file in chunks
         encrypted_chunks = []
         for base64_chunk in self.file_to_base64(file_path):
@@ -67,53 +78,74 @@ class FileCrypto:
         encrypted_data = b"\n".join(encrypted_chunks)
 
         # Create password-protected zip
-        zip_data = self.create_protected_zip(encrypted_data, self.key, password)
+        zip_data = self.create_protected_zip(
+            encrypted_data, self.key, file_metadata, password
+        )
 
         # Convert final zip to base64
         final_base64 = base64.b64encode(zip_data)
 
         # Save final base64 string
-        output_file = f"{file_path}.encrypted.txt"
+        output_file = output_file if output_file else "encrypted.txt"
         with open(output_file, "wb") as f:
             f.write(final_base64)
 
         return output_file
 
-    def decrypt_file(self, encrypted_file_path, password, output_path):
+    def decrypt_file(self, encrypted_file_path, password, output_dir=None):
         """Decrypt file from encrypted base64 zip archive"""
-        # Read base64 encoded zip
-        with open(encrypted_file_path, "rb") as f:
-            zip_data = base64.b64decode(f.read())
+        try:
+            # Read base64 encoded zip
+            with open(encrypted_file_path, "rb") as f:
+                zip_data = base64.b64decode(f.read())
 
-        # Create zip file in memory
-        zip_buffer = BytesIO(zip_data)
+            # Create zip file in memory
+            zip_buffer = BytesIO(zip_data)
 
-        # Extract files from zip
-        with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-            # Extract encrypted data
-            encrypted_data = zip_file.read("encrypted_data.txt")
+            # Extract files from zip
+            with pyzipper.AESZipFile(
+                zip_buffer, "r", encryption=pyzipper.WZ_AES
+            ) as zip_file:
+                try:
+                    # Set password for decryption
+                    zip_file.pwd = password.encode()
 
-            # Extract key file using password
+                    # Try to read all required files
+                    encrypted_data = zip_file.read("encrypted_data.txt")
+                    metadata = json.loads(zip_file.read("metadata.json"))
+                    key = zip_file.read("key.txt")
+                except (RuntimeError, pyzipper.BadZipFile):
+                    raise ValueError("Invalid password or corrupted file")
+
+            # Decrypt data chunks
             try:
-                key = zip_file.read("key.txt", pwd=password.encode())
-            except RuntimeError:
-                raise ValueError("Invalid password")
+                decrypted_content = b""
+                for line in encrypted_data.split(b"\n"):
+                    if line.strip():
+                        # Decrypt chunk
+                        decrypted_chunk = self.decrypt_data(line.strip(), key)
+                        # Decode base64
+                        decoded_chunk = base64.b64decode(decrypted_chunk)
+                        decrypted_content += decoded_chunk
+            except Exception as e:
+                raise ValueError(
+                    "Decryption failed - possibly corrupted data or wrong password"
+                )
 
-        # Decrypt data chunks
-        decrypted_content = b""
-        for line in encrypted_data.split(b"\n"):
-            if line.strip():
-                # Decrypt chunk
-                decrypted_chunk = self.decrypt_data(line.strip(), key)
-                # Decode base64
-                decoded_chunk = base64.b64decode(decrypted_chunk)
-                decrypted_content += decoded_chunk
+            # Determine output path
+            if output_dir:
+                output_path = Path(output_dir) / metadata["original_name"]
+            else:
+                output_path = Path(metadata["original_name"])
 
-        # Save decrypted file
-        with open(output_path, "wb") as f:
-            f.write(decrypted_content)
+            # Save decrypted file
+            with open(output_path, "wb") as f:
+                f.write(decrypted_content)
 
-        return output_path
+            return output_path
+
+        except Exception as e:
+            raise ValueError(f"Decryption failed: {str(e)}")
 
 
 if __name__ == "__main__":
@@ -121,9 +153,11 @@ if __name__ == "__main__":
 
     def print_usage():
         print("Usage:")
-        print("To encrypt: python file_crypto.py encrypt <file_path> <password>")
         print(
-            "To decrypt: python file_crypto.py decrypt <encrypted_file_path> <password> <output_path>"
+            "To encrypt: python file_crypto.py encrypt <file_path> <password> [encrypted_file_name]"
+        )
+        print(
+            "To decrypt: python file_crypto.py decrypt <encrypted_file_path> <password> [output_directory]"
         )
 
     if len(sys.argv) < 2:
@@ -133,19 +167,20 @@ if __name__ == "__main__":
     crypto = FileCrypto()
 
     try:
-        if sys.argv[1] == "encrypt" and len(sys.argv) == 4:
+        if sys.argv[1] == "encrypt" and (len(sys.argv) == 4 or len(sys.argv) == 5):
             file_path = sys.argv[2]
             password = sys.argv[3]
+            encrypted_file_name = sys.argv[4] if len(sys.argv) == 5 else None
 
-            output_file = crypto.encrypt_file(file_path, password)
+            output_file = crypto.encrypt_file(file_path, password, encrypted_file_name)
             print(f"File encrypted successfully. Output saved to: {output_file}")
 
-        elif sys.argv[1] == "decrypt" and len(sys.argv) == 5:
+        elif sys.argv[1] == "decrypt" and (len(sys.argv) == 4 or len(sys.argv) == 5):
             encrypted_file = sys.argv[2]
             password = sys.argv[3]
-            output_path = sys.argv[4]
+            output_dir = sys.argv[4] if len(sys.argv) == 5 else None
 
-            output_file = crypto.decrypt_file(encrypted_file, password, output_path)
+            output_file = crypto.decrypt_file(encrypted_file, password, output_dir)
             print(f"File decrypted successfully. Output saved to: {output_file}")
 
         else:
