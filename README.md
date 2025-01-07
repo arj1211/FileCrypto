@@ -2,6 +2,8 @@
 
 A secure file encryption/decryption utility that uses Fernet symmetric encryption, AES-256 encrypted zip archives, base64 encoding, and password protection to secure files while preserving original file metadata.
 
+See [**Potential Security Flaws**](#potential-security-flaws) before use.
+
 ## Features
 
 - Dual-layer encryption:
@@ -173,6 +175,32 @@ The script includes error handling for:
 - No built-in password strength validation
 - File paths must be accessible to the script
 
+### **Potential Security Flaws**
+1. Memory Management
+   - The program keeps decrypted data in memory as it processes chunks
+   - No secure memory wiping after use
+   - Sensitive data might be recoverable from memory dumps
+   - **IMPROVEMENT**: Implement secure memory wiping using packages like secure-memory or memguard
+2. Temporary Files
+   - While we delete the temporary key file, it's not securely wiped
+   - Could potentially be recovered from disk
+   - **IMPROVEMENT**: Use shutil.rmtree with secure overwrite or dedicated secure file deletion
+3. Password Handling
+   - Passwords are passed as plain text command line arguments
+   - Visible in process lists and command history
+   - No password complexity requirements
+   - **IMPROVEMENT**: Use getpass for password input, implement password strength validation
+4. Key Management
+   - The Fernet key is stored in the same file as the encrypted data
+   - While protected by password, this is single-point-of-failure
+   - **IMPROVEMENT**: Consider separate key storage or key derivation from password
+5. Fixed IV/Nonce
+   - While Fernet generates random IVs, the AES-ZIP encryption might reuse IVs
+   - **IMPROVEMENT**: Ensure unique IVs for each encryption operation
+6. Error Messages
+   - Some error messages might leak information about the internal state
+   - **IMPROVEMENT**: Make error messages more generic to prevent information leakage
+
 ## Best Practices
 
 1. **Password Security**
@@ -194,13 +222,16 @@ The script includes error handling for:
 
 Feel free to fork this repository and submit pull requests for any improvements.
 
+See [potential improvements](#future-improvements)
+
 ## License
 
 This project is open source and available under the MIT License.
 
 ## Future Improvements
 
-Potential areas for enhancement:
+### General Improvements
+
 - Password strength validation
 - Multiple encryption algorithms support
 - Progress indicators for large files
@@ -208,3 +239,23 @@ Potential areas for enhancement:
 - GUI interface
 - Additional metadata support (creation date, permissions, etc.)
 - Compression options for different file types
+
+### Security Improvements
+
+1. Implementation Security
+   - Add rate limiting for password attempts
+   - Implement secure key derivation (PBKDF2, Argon2)
+   - Add file integrity verification (HMAC)
+   - Consider adding digital signatures
+2. Runtime Security
+   - Add timing attack mitigations
+   - Implement memory protection
+   - Add entropy source verification
+3. Operational Security
+   - Add logging for security events
+   - Implement version checking for dependencies
+   - Add integrity checking for the script itself
+4. Additional Features
+   - Add support for key rotation
+   - Implement secure backup features
+   - Add emergency key recovery mechanism
