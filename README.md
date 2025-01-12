@@ -1,34 +1,32 @@
 # FileCrypto
 
-A secure file encryption/decryption utility that uses Fernet symmetric encryption, AES-256 encrypted zip archives, base64 encoding, and password protection to secure files while preserving original file metadata.
-
-See [**Potential Security Flaws**](#potential-security-flaws) before use.
+A secure file encryption/decryption utility that uses AES-256 encryption in CBC mode with robust key management and secure file processing.
 
 ## Features
 
-- Dual-layer encryption:
-  - Fernet symmetric encryption (AES-128 in CBC mode) for file content
-  - AES-256 encrypted zip archive for the entire package
-- Secure password-protected key storage
-- Preservation of original filename and extension
-- Metadata preservation within encrypted file
-- Base64 encoding for universal compatibility 
-- Chunk-based processing for memory efficiency
+- Strong encryption using AES-256 in CBC mode
+- Secure key generation and management
+- PKCS7 padding for proper block alignment
+- Random IV generation for each encryption
+- Preservation of original file structure
 - Command-line interface
-- All-in-one encryption/decryption class
+- Modular architecture with separate components for:
+  - Key Management
+  - Encryption/Decryption
+  - Key Exchange
+  - Metadata Management
 
 ## Requirements
 
 - Python 3.8+
 - cryptography package
-- pyzipper package
 
 ## Installation
 
-1. Clone this repository or download the script
+1. Clone this repository
 2. Install required dependencies:
 ```bash
-pip install cryptography pyzipper
+pip install cryptography
 ```
 
 ## Usage
@@ -36,226 +34,174 @@ pip install cryptography pyzipper
 ### Command Line Interface
 
 ```bash
-# Encrypt a file (creates encrypted.txt by default)
-python file_crypto.py encrypt <file_path> <password> [encrypted_file_name]
+# Encrypt a file (creates .encrypted extension by default)
+python main.py encrypt <input_file> [--output output_file]
 
-# Decrypt a file (restores original filename)
-python file_crypto.py decrypt encrypted.txt <password> [output_directory]
+# Decrypt a file (removes .encrypted extension by default)
+python main.py decrypt <encrypted_file> [--output output_file]
 ```
 
 ### Example Usage
 
 ```bash
-# Encrypt myfile.docx
-python file_crypto.py encrypt myfile.docx mypassword123
+# Encrypt a file
+python main.py encrypt document.pdf
 
-# Encrypt with custom output name
-python file_crypto.py encrypt myfile.docx mypassword123 custom_name.txt
+# Encrypt with custom output path
+python main.py encrypt document.pdf -o secure_doc.encrypted
 
-# Decrypt back to myfile.docx in current directory
-python file_crypto.py decrypt encrypted.txt mypassword123
+# Decrypt a file
+python main.py decrypt document.pdf.encrypted
 
-# Decrypt to specific directory
-python file_crypto.py decrypt encrypted.txt mypassword123 /path/to/output
+# Decrypt with custom output path
+python main.py decrypt document.pdf.encrypted -o restored_doc.pdf
 ```
 
-## How It Works
+## Architecture
 
-### Encryption Process Flow
+### Component Structure
 
-1. **Metadata Collection**
-   - Original filename is captured
-   - File extension is preserved
-   - Metadata is stored in JSON format
+1. **SecureFileProcessor**
+   - Main class coordinating encryption/decryption operations
+   - Handles file I/O and process management
 
-2. **Base64 Encoding**
-   - File is read in 64KB chunks
-   - Each chunk is converted to base64
-   - Ensures binary data can be safely stored as text
+2. **SecureKeyManager**
+   - Generates and stores encryption keys
+   - Manages key rotation and deletion
+   - Provides secure key retrieval
 
-3. **Fernet Encryption**
-   - Random encryption key is generated
-   - Each base64 chunk is encrypted using Fernet
-   - Provides AES-128 encryption in CBC mode with PKCS7 padding
+3. **SecureEncryptor**
+   - Implements AES-256 encryption in CBC mode
+   - Handles PKCS7 padding
+   - Manages IV generation and storage
 
-4. **AES-256 Encrypted Zip Creation**
-   - Encrypted data stored as 'encrypted_data.txt'
-   - Metadata stored as 'metadata.json'
-   - Encryption key stored as 'key.txt'
-   - Entire zip is encrypted using AES-256
-   - Password required for access to any file within zip
+4. **MetadataManager**
+   - Handles file metadata preservation
+   - Manages metadata storage and retrieval
 
-5. **Final Base64 Encoding**
-   - Entire encrypted zip archive is converted to base64
-   - Saved as 'encrypted.txt' (or custom name)
-   - Original filename is not exposed in encrypted file
+### Security Features
 
-### Decryption Process Flow
-
-1. **Initial Base64 Decoding**
-   - Reads the encrypted.txt file
-   - Decodes base64 to get the encrypted zip archive
-
-2. **AES-256 Zip Extraction**
-   - Opens the encrypted zip archive
-   - Requires correct password for access
-   - Extracts encrypted data, metadata, and key
-   - Failed password attempts are rejected
-
-3. **Chunk Decryption**
-   - Each encrypted chunk is decrypted using the key
-   - Base64 is decoded to get original binary data
-   - Chunks are combined to recreate original file
-
-4. **File Restoration**
-   - Uses stored metadata to recreate original filename
-   - Saves file with original name and extension
-   - Optionally saves to specified output directory
-
-## Security Features
-
-1. **Multi-layer Security**
-   - Fernet symmetric encryption (AES-128-CBC) for content
-   - AES-256 encryption for zip archive
-   - Password-protected archive access
-   - Base64 encoding for safe transfer
-   - Original filename hidden in encrypted file
+1. **Strong Encryption**
+   - AES-256 encryption in CBC mode
+   - Random IV for each encryption operation
+   - PKCS7 padding for proper block alignment
 
 2. **Key Management**
-   - Encryption key is automatically generated
-   - Key is stored within AES-256 encrypted zip
-   - Wrong passwords fail completely and securely
+   - Secure key generation using system entropy
+   - Protected key storage
+   - Key rotation capabilities
+   - Separate storage path for keys
 
-3. **Metadata Protection**
-   - File metadata stored inside encrypted archive
-   - Original filename not exposed in encrypted file name
-   - All sensitive information is protected
+3. **Process Security**
+   - Chunk-based file processing
+   - Secure error handling
+   - Clean exception management
 
-## Class Structure
+## Directory Structure
 
-### FileCrypto Class
+```
+project_root/
+├── crypto/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── encryptor.py
+│   ├── key_manager.py
+│   ├── key_exchange.py
+│   └── metadata_manager.py
+├── keys/
+│   └── encryption_key.key
+├── tests/
+└── main.py
+```
 
-Main methods:
-- `generate_key()`: Creates new Fernet encryption key
-- `encrypt_file()`: Main encryption method with metadata handling
-- `decrypt_file()`: Main decryption method with metadata restoration
-- `create_protected_zip()`: Creates AES-256 encrypted archive with metadata
-- `file_to_base64()`: Handles chunk-based base64 encoding
-- `encrypt_data()`: Handles Fernet encryption
-- `decrypt_data()`: Handles Fernet decryption
+## Implementation Details
 
-## Output Files
+### Encryption Process
 
-### Encryption Output
-- `encrypted.txt` (or custom name): Contains:
-  - Encrypted file data
-  - Original file metadata
-  - Encryption key
-  - All within AES-256 encrypted zip archive
-  - Final archive encoded in base64
+1. **Key Generation**
+   - Secure random key generation
+   - Key storage in protected directory
 
-### Decryption Output
-- Restores file with original name and extension
-- Optional output directory specification
-- Preserves original file structure
+2. **Encryption**
+   - Random IV generation
+   - AES-256-CBC encryption
+   - PKCS7 padding application
+   - IV prepended to encrypted data
+
+3. **File Handling**
+   - Original file read in binary mode
+   - Encrypted data written to output file
+   - Automatic extension management
+
+### Decryption Process
+
+1. **Key Retrieval**
+   - Secure key loading from storage
+   - Key validation
+
+2. **Decryption**
+   - IV extraction from encrypted data
+   - AES-256-CBC decryption
+   - PKCS7 padding removal
+   - Original data restoration
 
 ## Error Handling
 
-The script includes error handling for:
-- Invalid passwords (fails securely)
-- Missing files
+The system includes comprehensive error handling for:
+- Missing input files
+- Invalid keys
 - Corruption in encrypted data
-- Invalid command-line arguments
-- Invalid output directories
-- Failed decryption attempts
+- Invalid file permissions
+- Missing key files
+- Decryption failures
 
-## Limitations
+## Security Considerations
 
-- Password strength depends on user input
-- No built-in password strength validation
-- File paths must be accessible to the script
+1. **Key Storage**
+   - Keys stored in dedicated directory
+   - Separate from encrypted files
+   - Protected access permissions
 
-### **Potential Security Flaws**
-1. Memory Management
-   - The program keeps decrypted data in memory as it processes chunks
-   - No secure memory wiping after use
-   - Sensitive data might be recoverable from memory dumps
-   - **IMPROVEMENT**: Implement secure memory wiping using packages like secure-memory or memguard
-2. Temporary Files
-   - While we delete the temporary key file, it's not securely wiped
-   - Could potentially be recovered from disk
-   - **IMPROVEMENT**: Use shutil.rmtree with secure overwrite or dedicated secure file deletion
-3. Password Handling
-   - Passwords are passed as plain text command line arguments
-   - Visible in process lists and command history
-   - No password complexity requirements
-   - **IMPROVEMENT**: Use getpass for password input, implement password strength validation
-4. Key Management
-   - The Fernet key is stored in the same file as the encrypted data
-   - While protected by password, this is single-point-of-failure
-   - **IMPROVEMENT**: Consider separate key storage or key derivation from password
-5. Fixed IV/Nonce
-   - While Fernet generates random IVs, the AES-ZIP encryption might reuse IVs
-   - **IMPROVEMENT**: Ensure unique IVs for each encryption operation
-6. Error Messages
-   - Some error messages might leak information about the internal state
-   - **IMPROVEMENT**: Make error messages more generic to prevent information leakage
+2. **Encryption Strength**
+   - AES-256 encryption
+   - Random IV generation
+   - PKCS7 padding
+   - CBC mode operation
 
-## Best Practices
-
-1. **Password Security**
-   - Use strong, unique passwords
-   - Don't share passwords through same channel as encrypted files
-   - Keep passwords secure and documented
-
-2. **File Management**
-   - Keep backups of original files
-   - Verify successful decryption before deleting originals
-   - Use secure channels for transferring encrypted files
-
-3. **Usage**
-   - Test encryption/decryption with small files first
-   - Verify file integrity after decryption
-   - Keep track of passwords used for different files
-
-## Contributing
-
-Feel free to fork this repository and submit pull requests for any improvements.
-
-See [potential improvements](#future-improvements)
-
-## License
-
-This project is open source and available under the MIT License.
+3. **Implementation Security**
+   - Clean error messages
+   - Secure file handling
+   - Protected key management
 
 ## Future Improvements
 
-### General Improvements
+1. **Security Enhancements**
+   - Key derivation function implementation
+   - Digital signature support
+   - Integrity verification
+   - Secure memory handling
 
-- Password strength validation
-- Multiple encryption algorithms support
-- Progress indicators for large files
-- Batch processing capabilities
-- GUI interface
-- Additional metadata support (creation date, permissions, etc.)
-- Compression options for different file types
+2. **Feature Additions**
+   - Multi-file processing
+   - Directory encryption
+   - Progress indicators
+   - GUI interface
+   - Compression support
 
-### Security Improvements
+3. **Operational Improvements**
+   - Logging system
+   - Configuration management
+   - Performance optimizations
+   - Batch processing
 
-1. Implementation Security
-   - Add rate limiting for password attempts
-   - Implement secure key derivation (PBKDF2, Argon2)
-   - Add file integrity verification (HMAC)
-   - Consider adding digital signatures
-2. Runtime Security
-   - Add timing attack mitigations
-   - Implement memory protection
-   - Add entropy source verification
-3. Operational Security
-   - Add logging for security events
-   - Implement version checking for dependencies
-   - Add integrity checking for the script itself
-4. Additional Features
-   - Add support for key rotation
-   - Implement secure backup features
-   - Add emergency key recovery mechanism
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues for improvements.
+
+## License
+
+This project is licensed under the MIT License.
+
+## Disclaimer
+
+While this implementation uses strong cryptographic primitives, it's recommended to review the security requirements for your specific use case. Always keep secure backups of important files before encryption.

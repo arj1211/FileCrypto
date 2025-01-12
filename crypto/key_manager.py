@@ -1,27 +1,51 @@
+# crypto/key_manager.py
 import os
+from pathlib import Path
+from typing import Optional
 
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.hashes import SHA256
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+from crypto.config import SecurityConfig
 
 
-class KeyManager:
-    def __init__(self, key_file="key.secure"):
-        self.key_file = key_file
+class SecureKeyManager:
+    def __init__(self, storage_path: str):
+        self.storage_path = Path(storage_path)
+        self.key_file = self.storage_path / "encryption_key.key"
+        self._current_key = None
 
-    def generate_and_store_key(self):
-        key = os.urandom(32)
-        master_key = Fernet.generate_key()
-        self._save_encrypted_key(key, master_key)
+    def generate_key(self) -> bytes:
+        """Generate a new encryption key and store it."""
+        key = os.urandom(SecurityConfig.AES_KEY_SIZE)
+        self._current_key = key
+
+        # Save the key
+        self.storage_path.mkdir(parents=True, exist_ok=True)
+        with open(self.key_file, "wb") as f:
+            f.write(key)
+
         return key
 
-    def _save_encrypted_key(self, key, master_key):
-        f = Fernet(master_key)
-        encrypted_key = f.encrypt(key)
-        with open(self.key_file, "wb") as key_file:
-            key_file.write(encrypted_key)
+    def get_key(self) -> bytes:
+        """Retrieve the current encryption key."""
+        if self._current_key:
+            return self._current_key
 
-    def rotate_key(self, current_key):
-        return HKDF(
-            algorithm=SHA256(), length=32, salt=os.urandom(16), info=b"key rotation"
-        ).derive(current_key)
+        if not self.key_file.exists():
+            raise ValueError("No encryption key found. Please generate one first.")
+
+        with open(self.key_file, "rb") as f:
+            self._current_key = f.read()
+
+        return self._current_key
+
+    def delete_key(self) -> None:
+        """Delete the current encryption key."""
+        if self.key_file.exists():
+            self.key_file.unlink()
+        self._current_key = None
+
+    def rotate_key(self) -> bytes:
+        """Generate a new key and replace the old one."""
+        self.delete_key()
+        return self.generate_key()

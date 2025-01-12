@@ -1,51 +1,97 @@
-from cryptography.hazmat.primitives import serialization
+import argparse
+import logging
+import sys
+from pathlib import Path
 
-from crypto.encryptor import Encryptor
-from crypto.key_exchange import KeyExchange
-from crypto.key_manager import KeyManager
+from crypto.encryptor import SecureEncryptor
+from crypto.key_exchange import SecureKeyExchange
+from crypto.key_manager import SecureKeyManager
+from crypto.metadata_manager import MetadataManager
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class SecureFileProcessor:
+    def __init__(self):
+        # Create keys directory if it doesn't exist
+        keys_dir = Path("keys")
+        keys_dir.mkdir(exist_ok=True)
+
+        self.key_exchange = SecureKeyExchange()
+        self.key_manager = SecureKeyManager(storage_path=str(keys_dir))
+        self.encryptor = SecureEncryptor()
+        self.metadata_manager = MetadataManager()
+
+    def encrypt_file(self, input_path: str, output_path: str = None) -> None:
+        try:
+            if output_path is None:
+                output_path = input_path + ".encrypted"
+
+            with open(input_path, "rb") as f:
+                data = f.read()
+
+            key = self.key_manager.generate_key()
+            encrypted_data = self.encryptor.encrypt(data, key)
+
+            with open(output_path, "wb") as f:
+                f.write(encrypted_data)
+
+            logger.info(f"Successfully encrypted {input_path} to {output_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to encrypt file: {str(e)}")
+            raise
+
+    def decrypt_file(self, input_path: str, output_path: str = None) -> None:
+        try:
+            if output_path is None:
+                output_path = input_path.replace(".encrypted", "")
+                if output_path == input_path:
+                    output_path = input_path + ".decrypted"
+
+            with open(input_path, "rb") as f:
+                encrypted_data = f.read()
+
+            key = self.key_manager.get_key()
+            decrypted_data = self.encryptor.decrypt(encrypted_data, key)
+
+            with open(output_path, "wb") as f:
+                f.write(decrypted_data)
+
+            logger.info(f"Successfully decrypted {input_path} to {output_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to decrypt file: {str(e)}")
+            raise
 
 
 def main():
-    # Step 1: Key Generation
-    key_manager = KeyManager()
-    print("Generating and storing a new encryption key...")
-    key = key_manager.generate_and_store_key()
-    print(f"Generated key: {key.hex()}")
-
-    # Step 2: Simulate Secure Key Exchange
-    print("Simulating secure key exchange...")
-    key_exchange = KeyExchange()
-    peer_public_key = key_exchange.public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    parser = argparse.ArgumentParser(
+        description="Secure file encryption/decryption tool"
     )
-    # Simulate using the same public key for simplicity
-    shared_key = key_exchange.perform_key_exchange(peer_public_key)
-    print(f"Derived shared key: {shared_key.hex()}")
-
-    # Step 3: Encrypt Data
-    print("Encrypting data...")
-    encryptor = Encryptor()
-    data = b"This is some sensitive data to encrypt"
-    iv, ciphertext, tag, encrypted_transaction_key = encryptor.encrypt_data(
-        data, shared_key
+    parser.add_argument(
+        "action", choices=["encrypt", "decrypt"], help="Action to perform"
     )
+    parser.add_argument("input_file", help="Input file path")
+    parser.add_argument("--output", "-o", help="Output file path (optional)")
 
-    # Debugging prints
-    print("IV:", iv.hex())
-    print("Ciphertext:", ciphertext.hex())
-    print("Tag:", tag.hex())
-    print("Encrypted Transaction Key:", encrypted_transaction_key.hex())
+    args = parser.parse_args()
 
-    print("Encryption completed successfully!")
+    try:
+        processor = SecureFileProcessor()
 
-    # Step 4: Decrypt Data
-    print("Decrypting data...")
-    decrypted_data = encryptor.decrypt_data(
-        iv, ciphertext, tag, encrypted_transaction_key, shared_key
-    )
-    print(f"Decrypted data: {decrypted_data}")
+        if args.action == "encrypt":
+            processor.encrypt_file(args.input_file, args.output)
+        else:
+            processor.decrypt_file(args.input_file, args.output)
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Failed to process file: {str(e)}")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

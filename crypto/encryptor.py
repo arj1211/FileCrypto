@@ -1,50 +1,68 @@
+# crypto/encryptor.py
 import os
 
+from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+from crypto.config import SecurityConfig
 
-class Encryptor:
-    def encrypt_data(self, data, shared_key):
-        transaction_key = os.urandom(32)
-        iv = os.urandom(12)
 
-        # Encrypt data with transaction key
-        cipher = Cipher(algorithms.AES(transaction_key), modes.GCM(iv))
+class SecureEncryptor:
+    def __init__(self):
+        self.block_size = SecurityConfig.BLOCK_SIZE
+
+    def _validate_key(self, key: bytes) -> None:
+        """Validate the encryption key."""
+        if len(key) != SecurityConfig.AES_KEY_SIZE:
+            raise ValueError(
+                f"Invalid key length. Expected {SecurityConfig.AES_KEY_SIZE} bytes, "
+                f"got {len(key)} bytes"
+            )
+
+    def encrypt(self, data: bytes, key: bytes) -> bytes:
+        """
+        Encrypt data using AES in CBC mode with PKCS7 padding.
+        Returns: iv + encrypted_data
+        """
+        self._validate_key(key)
+
+        # Generate a random IV
+        iv = os.urandom(16)  # AES block size is 16 bytes
+
+        # Create padder
+        padder = padding.PKCS7(self.block_size).padder()
+        padded_data = padder.update(data) + padder.finalize()
+
+        # Create cipher
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+
+        # Encrypt
         encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(data) + encryptor.finalize()
+        encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
 
-        # Encrypt transaction key with shared key
-        cipher_shared = Cipher(algorithms.AES(shared_key), modes.GCM(iv))
-        encryptor_shared = cipher_shared.encryptor()
-        encrypted_transaction_key = (
-            encryptor_shared.update(transaction_key) + encryptor_shared.finalize()
-        )
+        # Return IV + encrypted data
+        return iv + encrypted_data
 
-        return iv, ciphertext, encryptor.tag, encrypted_transaction_key
+    def decrypt(self, encrypted_data: bytes, key: bytes) -> bytes:
+        """
+        Decrypt data using AES in CBC mode with PKCS7 padding.
+        Expects input in format: iv + encrypted_data
+        """
+        self._validate_key(key)
 
-    def decrypt_data(self, iv, ciphertext, tag, encrypted_transaction_key, shared_key):
-        print(f"Debug - Decrypting Transaction Key:")
-        print(f"IV: {iv.hex()}")
-        print(f"Tag: {tag.hex()}")
-        print(f"Encrypted Transaction Key: {encrypted_transaction_key.hex()}")
-        print(f"Shared Key: {shared_key.hex()}")
+        # Extract IV and ciphertext
+        iv = encrypted_data[:16]
+        ciphertext = encrypted_data[16:]
 
-        # Decrypt the transaction key using the shared key
-        cipher_shared = Cipher(algorithms.AES(shared_key), modes.GCM(iv, tag))
-        decryptor_shared = cipher_shared.decryptor()
+        # Create cipher
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
 
-        try:
-            transaction_key = decryptor_shared.update(encrypted_transaction_key)
-            transaction_key += (
-                decryptor_shared.finalize()
-            )  # Separate finalize to avoid InvalidTag error
-        except Exception as e:
-            print(f"Failed to decrypt the transaction key: {e}")
-            raise
-
-        # Decrypt the data using the transaction key
-        cipher = Cipher(algorithms.AES(transaction_key), modes.GCM(iv, tag))
+        # Decrypt
         decryptor = cipher.decryptor()
-        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+        padded_data = decryptor.update(ciphertext) + decryptor.finalize()
 
-        return plaintext
+        # Remove padding
+        unpadder = padding.PKCS7(self.block_size).unpadder()
+        data = unpadder.update(padded_data) + unpadder.finalize()
+
+        return data
