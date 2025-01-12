@@ -1,20 +1,32 @@
 # FileCrypto
 
-A secure file encryption/decryption utility that uses AES-256 encryption in CBC mode with robust key management and secure file processing.
+> ⚠️ **WARNING**: This is an educational project and contains known security vulnerabilities. 
+> Not suitable for production use or protecting sensitive data. See "Security Considerations" 
+> section for details.
+
+A file encryption/decryption utility that implements AES-256 encryption in CBC mode with key management and file processing capabilities.
 
 ## Features
 
-- Strong encryption using AES-256 in CBC mode
-- Secure key generation and management
-- PKCS7 padding for proper block alignment
+- AES-256 encryption in CBC mode
+- Basic key generation and management
+- PKCS7 padding for block alignment
 - Random IV generation for each encryption
-- Preservation of original file structure
+- File structure preservation
 - Command-line interface
 - Modular architecture with separate components for:
   - Key Management
   - Encryption/Decryption
   - Key Exchange
   - Metadata Management
+
+## Security Considerations
+
+### Current Security Vulnerabilities
+
+This implementation has several known security vulnerabilities that users should be aware of:
+
+[Rest of security considerations section as previously written...]
 
 ## Requirements
 
@@ -193,6 +205,87 @@ The system includes comprehensive error handling for:
    - Configuration management
    - Performance optimizations
    - Batch processing
+
+
+## Security Considerations
+
+### Current Security Vulnerabilities
+
+This implementation has several known security vulnerabilities that users should be aware of:
+
+#### Memory Handling
+- The entire file content is loaded into memory during encryption/decryption
+- No secure memory wiping is implemented
+- Sensitive data (keys, plaintext) remains in memory until garbage collection occurs
+- Vulnerable to memory dumps that could expose keys and plaintext data
+
+#### Key Management Issues
+- Keys are stored directly on the filesystem without additional protection
+- No key derivation function (KDF) implementation
+- Missing salt usage in cryptographic operations
+- Single key reuse across all operations
+- No key rotation mechanism
+- Keys could be exposed through filesystem access
+
+#### File Operation Risks
+- No secure handling of temporary files
+- Potential data remnants left in temporary storage
+- Missing cleanup procedures for intermediate files
+- File operations are not atomic, leading to potential partial writes
+
+#### Error Handling Weaknesses
+- Detailed error messages could leak information about the cryptographic operations
+- Stack traces might expose internal implementation details
+- Non-uniform error handling could enable timing attacks
+
+#### Input Validation Gaps
+- Limited validation of input file paths
+- No maximum file size limits
+- Missing content type validation
+- Path traversal vulnerabilities possible
+
+#### Missing Security Features
+- No message authentication (MAC)
+- No digital signatures
+- Missing integrity checks
+- No verification of encrypted data
+
+#### Operational Security Gaps
+- No logging of cryptographic operations
+- Missing audit trail
+- No version control for encrypted files
+- Absent access control mechanisms
+
+### Important Notice
+
+This implementation is currently **NOT SUITABLE FOR PRODUCTION USE** or for protecting sensitive data. It is a basic implementation that serves educational purposes but requires significant security improvements before being used in any production environment.
+
+### Recommended Uses
+
+- Educational purposes only
+- Learning about cryptographic implementations
+- Understanding security considerations in cryptographic software
+- Testing and development environments (with non-sensitive data)
+
+### Do Not Use For
+
+- Storing sensitive personal information
+- Protecting production data
+- Commercial applications
+- Any situation requiring genuine security guarantees
+
+### Future Improvements Needed
+
+A production-ready version would need to implement:
+1. Secure memory handling and wiping
+2. Proper key derivation and management
+3. Authenticated encryption
+4. Secure temporary file handling
+5. Comprehensive input validation
+6. Proper error handling
+7. Audit logging
+8. Access controls
+
 
 ## Contributing
 
