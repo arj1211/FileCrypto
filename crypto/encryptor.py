@@ -5,51 +5,53 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 class SecureEncryptor:
-    VALID_KEY_SIZES = [16, 24, 32]  # AES-128, AES-192, or AES-256 (in bytes)
-
     def __init__(self):
         self.backend = default_backend()
 
     def _validate_key(self, key: bytes) -> None:
         """Validate the encryption key length"""
-        if len(key) not in self.VALID_KEY_SIZES:
+        if len(key) != 32:  # We strictly require AES-256
             raise ValueError(
-                f"Invalid key size ({len(key)} bytes). "
-                f"Key must be one of {self.VALID_KEY_SIZES} bytes long for AES encryption."
+                f"Invalid key size: {len(key)} bytes. Required: 32 bytes (256 bits)"
             )
 
     def encrypt(self, data: bytes, key: bytes) -> bytes:
-        """Encrypt data using AES in CBC mode with PKCS7 padding"""
+        """
+        Encrypt data using AES-256-GCM.
+        Returns: nonce (12 bytes) + tag (16 bytes) + ciphertext
+        """
         self._validate_key(key)
 
-        iv = os.urandom(16)
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=self.backend)
+        # Generate a random 96-bit nonce (12 bytes)
+        nonce = os.urandom(12)
+
+        # Create an encryptor object
+        cipher = Cipher(algorithms.AES(key), modes.GCM(nonce), backend=self.backend)
         encryptor = cipher.encryptor()
 
-        # Add PKCS7 padding
-        block_size = 16
-        padding_length = block_size - (len(data) % block_size)
-        padded_data = data + bytes([padding_length] * padding_length)
-
         # Encrypt the data
-        encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
+        ciphertext = encryptor.update(data) + encryptor.finalize()
 
-        # Return IV + encrypted data
-        return iv + encrypted_data
+        # Return nonce + tag + ciphertext
+        return nonce + encryptor.tag + ciphertext
 
     def decrypt(self, encrypted_data: bytes, key: bytes) -> bytes:
-        """Decrypt data using AES in CBC mode with PKCS7 padding"""
+        """
+        Decrypt data using AES-256-GCM.
+        Input format: nonce (12 bytes) + tag (16 bytes) + ciphertext
+        """
         self._validate_key(key)
 
-        iv = encrypted_data[:16]
-        ciphertext = encrypted_data[16:]
+        # Extract nonce and tag
+        nonce = encrypted_data[:12]
+        tag = encrypted_data[12:28]
+        ciphertext = encrypted_data[28:]
 
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=self.backend)
+        # Create a decryptor object
+        cipher = Cipher(
+            algorithms.AES(key), modes.GCM(nonce, tag), backend=self.backend
+        )
         decryptor = cipher.decryptor()
 
         # Decrypt the data
-        padded_data = decryptor.update(ciphertext) + decryptor.finalize()
-
-        # Remove PKCS7 padding
-        padding_length = padded_data[-1]
-        return padded_data[:-padding_length]
+        return decryptor.update(ciphertext) + decryptor.finalize()

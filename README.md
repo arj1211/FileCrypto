@@ -4,29 +4,33 @@
 > Not suitable for production use or protecting sensitive data. See "Security Considerations" 
 > section for details.
 
-A file encryption/decryption utility that implements AES-256 encryption in CBC mode with key management and file processing capabilities.
+A file encryption/decryption utility that implements AES-256-GCM encryption with authenticated encryption, key management, and file processing capabilities.
 
 ## Features
 
-- AES-256 encryption in CBC mode
-- Basic key generation and management
-- PKCS7 padding for block alignment
-- Random IV generation for each encryption
+- AES-256-GCM authenticated encryption
+- Secure key generation and management
+- Built-in tampering detection
+- Automatic nonce generation for each encryption
+- Authentication tag verification
 - File structure preservation
 - Command-line interface
 - Modular architecture with separate components for:
   - Key Management
   - Encryption/Decryption
-  - Key Exchange
+  - File Processing
   - Metadata Management
 
-## Security Considerations
+## Security Features
 
-### Current Security Vulnerabilities
-
-This implementation has several known security vulnerabilities that users should be aware of:
-
-[Rest of security considerations section as previously written...]
+- Uses AES-256-GCM (Galois/Counter Mode) for authenticated encryption
+- Automatic authentication tag verification during decryption 
+- Unique nonce (number used once) for each encryption
+- Immediate detection and rejection of:
+  - Tampered data
+  - Incorrect decryption keys
+  - Invalid key sizes
+- No padding oracle vulnerabilities (GCM mode)
 
 ## Requirements
 
@@ -79,13 +83,13 @@ python main.py decrypt document.pdf.encrypted -o restored_doc.pdf
 
 2. **SecureKeyManager**
    - Generates and stores encryption keys
-   - Manages key rotation and deletion
+   - Manages secure key storage
    - Provides secure key retrieval
 
 3. **SecureEncryptor**
-   - Implements AES-256 encryption in CBC mode
-   - Handles PKCS7 padding
-   - Manages IV generation and storage
+   - Implements AES-256-GCM encryption
+   - Handles nonce generation and authentication
+   - Manages tag generation and verification
 
 4. **MetadataManager**
    - Handles file metadata preservation
@@ -94,18 +98,19 @@ python main.py decrypt document.pdf.encrypted -o restored_doc.pdf
 ### Security Features
 
 1. **Strong Encryption**
-   - AES-256 encryption in CBC mode
-   - Random IV for each encryption operation
-   - PKCS7 padding for proper block alignment
+   - AES-256 encryption in GCM mode
+   - Random nonce for each encryption operation
+   - Authenticated encryption with built-in integrity checking
+   - No padding required (GCM mode)
 
 2. **Key Management**
    - Secure key generation using system entropy
    - Protected key storage
-   - Key rotation capabilities
    - Separate storage path for keys
 
 3. **Process Security**
    - Chunk-based file processing
+   - Automatic tampering detection
    - Secure error handling
    - Clean exception management
 
@@ -135,10 +140,10 @@ project_root/
    - Key storage in protected directory
 
 2. **Encryption**
-   - Random IV generation
-   - AES-256-CBC encryption
-   - PKCS7 padding application
-   - IV prepended to encrypted data
+   - Random nonce generation
+   - AES-256-GCM encryption
+   - Authentication tag generation
+   - Nonce and tag prepended to encrypted data
 
 3. **File Handling**
    - Original file read in binary mode
@@ -152,9 +157,9 @@ project_root/
    - Key validation
 
 2. **Decryption**
-   - IV extraction from encrypted data
-   - AES-256-CBC decryption
-   - PKCS7 padding removal
+   - Nonce and tag extraction from encrypted data
+   - Authentication tag verification
+   - AES-256-GCM decryption
    - Original data restoration
 
 ## Error Handling
@@ -166,32 +171,70 @@ The system includes comprehensive error handling for:
 - Invalid file permissions
 - Missing key files
 - Decryption failures
+- Tampering detection
+- Authentication failures
+
+### Error Categories
+
+1. **Cryptographic Errors**
+   - Invalid key size
+   - Failed authentication
+   - Corrupted data detection
+   - Nonce verification failures
+
+2. **File Operation Errors**
+   - File access permissions
+   - Missing files
+   - Invalid file paths
+   - I/O errors
+
+3. **Key Management Errors**
+   - Key loading failures
+   - Invalid key format
+   - Key storage errors
+   - Key rotation failures
+
 
 ## Security Considerations
 
-1. **Key Storage**
-   - Keys stored in dedicated directory
-   - Separate from encrypted files
-   - Protected access permissions
+### Current Security Features
 
-2. **Encryption Strength**
-   - AES-256 encryption
-   - Random IV generation
-   - PKCS7 padding
-   - CBC mode operation
+This implementation includes several security improvements:
 
-3. **Implementation Security**
-   - Clean error messages
-   - Secure file handling
-   - Protected key management
+#### Cryptographic Strength
+- Uses AES-256-GCM authenticated encryption
+- Automatic tampering detection
+- Unique nonce for each encryption operation
+- Built-in integrity verification through authentication tags
+- No padding vulnerabilities (GCM mode)
+
+#### Error Handling
+- Immediate detection of tampered data
+- Secure rejection of incorrect keys
+- Validation of key sizes
+- Clear error boundaries for security-related failures
+
+However, users should still be aware of remaining considerations:
+
+#### Memory Handling
+- The entire file content is loaded into memory during encryption/decryption
+- No secure memory wiping is implemented
+- Sensitive data (keys, plaintext) remains in memory until garbage collection occurs
+- Vulnerable to memory dumps that could expose keys and plaintext data
+
+#### File Operation Risks
+- No secure handling of temporary files
+- Potential data remnants left in temporary storage
+- Missing cleanup procedures for intermediate files
+- File operations are not atomic, leading to potential partial writes
 
 ## Future Improvements
 
 1. **Security Enhancements**
+   - Secure memory handling and wiping
    - Key derivation function implementation
    - Digital signature support
-   - Integrity verification
-   - Secure memory handling
+   - Atomic file operations
 
 2. **Feature Additions**
    - Multi-file processing
@@ -206,90 +249,16 @@ The system includes comprehensive error handling for:
    - Performance optimizations
    - Batch processing
 
-
-## Security Considerations
-
-### Current Security Vulnerabilities
-
-This implementation has several known security vulnerabilities that users should be aware of:
-
-#### Memory Handling
-- The entire file content is loaded into memory during encryption/decryption
-- No secure memory wiping is implemented
-- Sensitive data (keys, plaintext) remains in memory until garbage collection occurs
-- Vulnerable to memory dumps that could expose keys and plaintext data
-
-#### Key Management Issues
-- Keys are stored directly on the filesystem without additional protection
-- No key derivation function (KDF) implementation
-- Missing salt usage in cryptographic operations
-- Single key reuse across all operations
-- No key rotation mechanism
-- Keys could be exposed through filesystem access
-
-#### File Operation Risks
-- No secure handling of temporary files
-- Potential data remnants left in temporary storage
-- Missing cleanup procedures for intermediate files
-- File operations are not atomic, leading to potential partial writes
-
-#### Error Handling Weaknesses
-- Detailed error messages could leak information about the cryptographic operations
-- Stack traces might expose internal implementation details
-- Non-uniform error handling could enable timing attacks
-
-#### Input Validation Gaps
-- Limited validation of input file paths
-- No maximum file size limits
-- Missing content type validation
-- Path traversal vulnerabilities possible
-
-#### Missing Security Features
-- No message authentication (MAC)
-- No digital signatures
-- Missing integrity checks
-- No verification of encrypted data
-
-#### Operational Security Gaps
-- No logging of cryptographic operations
-- Missing audit trail
-- No version control for encrypted files
-- Absent access control mechanisms
-
-### Important Notice
-
-This implementation is currently **NOT SUITABLE FOR PRODUCTION USE** or for protecting sensitive data. It is a basic implementation that serves educational purposes but requires significant security improvements before being used in any production environment.
-
-### Recommended Uses
-
-- Educational purposes only
-- Learning about cryptographic implementations
-- Understanding security considerations in cryptographic software
-- Testing and development environments (with non-sensitive data)
-
-### Do Not Use For
-
-- Storing sensitive personal information
-- Protecting production data
-- Commercial applications
-- Any situation requiring genuine security guarantees
-
-### Future Improvements Needed
-
-A production-ready version would need to implement:
-1. Secure memory handling and wiping
-2. Proper key derivation and management
-3. Authenticated encryption
-4. Secure temporary file handling
-5. Comprehensive input validation
-6. Proper error handling
-7. Audit logging
-8. Access controls
-
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for improvements.
+
+When contributing, please:
+- Follow existing code style
+- Add tests for new features
+- Update documentation as needed
+- Maintain security best practices
+- Document any security considerations
 
 ## License
 
@@ -297,4 +266,4 @@ This project is licensed under the MIT License.
 
 ## Disclaimer
 
-While this implementation uses strong cryptographic primitives, it's recommended to review the security requirements for your specific use case. Always keep secure backups of important files before encryption.
+While this implementation uses strong cryptographic primitives and includes security features like authenticated encryption, users should review the security requirements for their specific use case. Always keep secure backups of important files before encryption.
