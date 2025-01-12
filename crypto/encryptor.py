@@ -1,68 +1,55 @@
-# crypto/encryptor.py
 import os
 
-from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-
-from crypto.config import SecurityConfig
 
 
 class SecureEncryptor:
+    VALID_KEY_SIZES = [16, 24, 32]  # AES-128, AES-192, or AES-256 (in bytes)
+
     def __init__(self):
-        self.block_size = SecurityConfig.BLOCK_SIZE
+        self.backend = default_backend()
 
     def _validate_key(self, key: bytes) -> None:
-        """Validate the encryption key."""
-        if len(key) != SecurityConfig.AES_KEY_SIZE:
+        """Validate the encryption key length"""
+        if len(key) not in self.VALID_KEY_SIZES:
             raise ValueError(
-                f"Invalid key length. Expected {SecurityConfig.AES_KEY_SIZE} bytes, "
-                f"got {len(key)} bytes"
+                f"Invalid key size ({len(key)} bytes). "
+                f"Key must be one of {self.VALID_KEY_SIZES} bytes long for AES encryption."
             )
 
     def encrypt(self, data: bytes, key: bytes) -> bytes:
-        """
-        Encrypt data using AES in CBC mode with PKCS7 padding.
-        Returns: iv + encrypted_data
-        """
+        """Encrypt data using AES in CBC mode with PKCS7 padding"""
         self._validate_key(key)
 
-        # Generate a random IV
-        iv = os.urandom(16)  # AES block size is 16 bytes
-
-        # Create padder
-        padder = padding.PKCS7(self.block_size).padder()
-        padded_data = padder.update(data) + padder.finalize()
-
-        # Create cipher
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-
-        # Encrypt
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=self.backend)
         encryptor = cipher.encryptor()
+
+        # Add PKCS7 padding
+        block_size = 16
+        padding_length = block_size - (len(data) % block_size)
+        padded_data = data + bytes([padding_length] * padding_length)
+
+        # Encrypt the data
         encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
 
         # Return IV + encrypted data
         return iv + encrypted_data
 
     def decrypt(self, encrypted_data: bytes, key: bytes) -> bytes:
-        """
-        Decrypt data using AES in CBC mode with PKCS7 padding.
-        Expects input in format: iv + encrypted_data
-        """
+        """Decrypt data using AES in CBC mode with PKCS7 padding"""
         self._validate_key(key)
 
-        # Extract IV and ciphertext
         iv = encrypted_data[:16]
         ciphertext = encrypted_data[16:]
 
-        # Create cipher
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-
-        # Decrypt
+        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=self.backend)
         decryptor = cipher.decryptor()
+
+        # Decrypt the data
         padded_data = decryptor.update(ciphertext) + decryptor.finalize()
 
-        # Remove padding
-        unpadder = padding.PKCS7(self.block_size).unpadder()
-        data = unpadder.update(padded_data) + unpadder.finalize()
-
-        return data
+        # Remove PKCS7 padding
+        padding_length = padded_data[-1]
+        return padded_data[:-padding_length]
